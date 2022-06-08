@@ -1,30 +1,30 @@
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ./run_kubernetes.sh
+prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ./run_kubernetes.sh
 pod/testcontainer created
 NAME            READY   STATUS              RESTARTS   AGE
 testcontainer   0/1     ContainerCreating   0          0s
 error: unable to forward port because pod is not running. Current status=Pending
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % kubectl get pod
+prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % kubectl get pod
 NAME            READY   STATUS              RESTARTS   AGE
-testcontainer   0/1     ContainerCreating   0          46s
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % kubectl get pod
+testcontainer   0/1     ContainerCreating   0          52s
+prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % kubectl get pod
 NAME            READY   STATUS              RESTARTS   AGE
-testcontainer   0/1     ContainerCreating   0          112s
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % kubectl get pod
-NAME            READY   STATUS              RESTARTS   AGE
-testcontainer   0/1     ContainerCreating   0          2m59s
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % kubectl get pod
+testcontainer   0/1     ContainerCreating   0          3m5s
+prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % kubectl get pod
 NAME            READY   STATUS    RESTARTS   AGE
-testcontainer   1/1     Running   0          4m39s
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ./run_kuberenets.sh
+testcontainer   1/1     Running   0          4m50s
+prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ./run_kuberenets.sh
 zsh: no such file or directory: ./run_kuberenets.sh
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ls
-Dockerfile		docker_out.txt		output_txt_files	upload_docker.sh
-Makefile		make_prediction.sh	requirements.txt
-README.md		minikube-darwin-amd64	run_docker.sh
-app.py			model_data		run_kubernetes.sh
-(.devops) prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ./run_kubernetes.sh
+prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ./run_kubernetes.sh
 Error from server (AlreadyExists): pods "testcontainer" already exists
 NAME            READY   STATUS    RESTARTS   AGE
-testcontainer   1/1     Running   0          5m11s
+testcontainer   1/1     Running   0          5m14s
 Forwarding from 127.0.0.1:8002 -> 80
 Forwarding from [::1]:8002 -> 80
+
+prernaarora@Prernas-MacBook-Air project-ml-microservice-kubernetes % ./make_prediction.sh
+Port: 8000
+{
+  "prediction": [
+    20.35373177134412
+  ]
+}
