@@ -1,70 +1,70 @@
-jobs:
-  lint-docker:
-    docker:
-      - image: circleci/python:3.7.3-stretch
-        environment:
-          FLASK_CONFIG: testing
-    working_directory: ~/repo
-    steps:
-      - checkout
-      - run:
-          name: Setup python virtual environment
-          command: |
-            echo 'export IMAGE_NAME=capstone_image' >> $BASH_ENV
-            virtualenv capostoneenv
-            . capostoneenv/bin/activate
-            pip install --no-cache-dir -r requirements.txt
-      - run:
-          name: Lint blue app
-          command: |
-            . capostoneenv/bin/activate
-            cd blue
-            wget -O ./hadolint https://github.com/hadolint/hadolint/releases/download/v1.16.3/hadolint-Linux-x86_64 &&\
-            chmod +x ./hadolint
-            ./hadolint Dockerfile
-            pylint --disable=R,C,W1203,W1202 capstone_hello_world.py
-      - run:
-          name: Lint green app
-          command: |
-            . capostoneenv/bin/activate
-            cd green
-            wget -O ./hadolint https://github.com/hadolint/hadolint/releases/download/v1.16.3/hadolint-Linux-x86_64 &&\
-            chmod +x ./hadolint
-            ./hadolint Dockerfile
-            pylint --disable=R,C,W1203,W1202 capstone_hello_world.py
-  build-deploy-app:
-    docker:
-      - image: circleci/python:3.7.3-stretch
-        environment:
-          FLASK_CONFIG: testing
-    steps:
-      - checkout
-      - run:
-          name: Setup python virtual environment
-          command: |
-            echo 'export IMAGE_NAME=capstone' >> $BASH_ENV
-            virtualenv capostoneenv
-            . capostoneenv/bin/activate
-            pip install --no-cache-dir -r requirements.txt
-      - setup_remote_docker:
-          docker_layer_caching: true
-      - run:
-          name: Build and push blue Docker image
-          command: |
-            . capostoneenv/bin/activate
-            cd blue
-            docker build -t mjgmora/$IMAGE_NAME:blue .
-            echo $DOCKER_PWD | docker login -u $DOCKER_LOGIN --password-stdin
-            docker push mjgmora/$IMAGE_NAME:blue
-      - run:
-          name: Build and push green Docker image
-          command: |
-            . capostoneenv/bin/activate
-            cd green
-            docker build -t mjgmora/$IMAGE_NAME:green .
-            echo $DOCKER_PWD | docker login -u $DOCKER_LOGIN --password-stdin
-            docker push mjgmora/$IMAGE_NAME:green
+version: 2.1
 
+orbs:
+  aws-eks: circleci/aws-eks@1.1.0
+  kubernetes: circleci/kubernetes@0.4.0
+  docker: circleci/docker@2.0.1
+  snyk: snyk/snyk@1.1.2
+
+commands:
+  destroy-cluster:
+    description: Destroy EKS Cluster.
+    parameters:
+        cluster-name:
+          description: |
+            Name of the EKS cluster
+          type: string
+
+    steps:
+      - run:
+          name: Destroy environments
+          command: |
+            #aws cloudformation delete-stack --stack-name eksctl-<< parameters.cluster-name >>-nodegroup-ng --region us-east-1
+            aws cloudformation delete-stack --stack-name eksctl-<< parameters.cluster-name >>-cluster --region us-east-1
+jobs:
+  lintcheck:
+    docker:
+      - image: circleci/python:3.7.3-stretch
+    working_directory: ~/app
+    steps:
+      - checkout
+      - run:
+          name: install dependencies
+          command: |
+              python3 -m venv ~/.capstone
+              . ~/.capstone/bin/activate
+              make install
+      - save_cache:
+          paths:
+            - .~/.capstone
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
+      - run:
+          name: run lint
+          command: |
+              . ~/.capstone/bin/activate
+              make lint
+
+  build-and-push-image:
+    machine: true
+    working_directory: ~/app
+    steps:
+      - checkout
+      - run:
+          name: Build Docker image
+          command: |
+            # Build the docker image and tagging it
+            docker build -t prernaarora28/devops-capstone-app:latest .
+      - run:
+          name: Push Docker Image to docker hub
+          command: |
+            # List docker images
+            docker images ls
+            # Login to docker hub
+            docker login -u prernaarora28 --password Gaurav@2021
+            # Pusing docker images to git hub
+            docker push prernaarora28/devops-capstone-app:latest
+
+# Creation of Cluster
   create-cluster:
     executor: aws-eks/python3
     parameters:
@@ -73,26 +73,31 @@ jobs:
           Name of the EKS cluster
         type: string
     steps:
+      - checkout
+      - aws-eks/install-aws-iam-authenticator:
+          release-tag: ''
       - run:
           name: Install the eksctl tool
           command: |
             if which eksctl > /dev/null; then
-              echo "eksctl is already installed"
-              exit 0
+            echo "eksctl is already installed"
+            exit 0
             fi
             mkdir -p eksctl_download
-            curl --silent --location --retry 5 "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" \
-              | tar xz -C eksctl_download
+            curl --silent --location --retry 5 "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C eksctl_download
             chmod +x eksctl_download/eksctl
             SUDO=""
             if [ $(id -u) -ne 0 ] && which sudo > /dev/null ; then
-              SUDO="sudo"
+            SUDO="sudo"
             fi
             $SUDO mv eksctl_download/eksctl /usr/local/bin/
             rmdir eksctl_download
       - aws-eks/create-cluster:
           cluster-name: << parameters.cluster-name >>
-  test-cluster:
+          node-type: t2.medium
+
+# Deployment of Cluster
+  create-deployment:
     executor: aws-eks/python3
     parameters:
       cluster-name:
@@ -104,73 +109,85 @@ jobs:
       - kubernetes/install
       - aws-eks/update-kubeconfig-with-authenticator:
           cluster-name: << parameters.cluster-name >>
-      - run:
-          name: Deploy blue app in cluster
-          command: |
-            cd blue
-            ./run_kubernetes.sh
-      - run:
-          command: |
-            sleep 120 && kubectl get all && sleep 120
-          name: Test blue app in cluster
-      - run:
-          name: Deploy green app in cluster
-          command: |
-            cd green
-            ./run_kubernetes.sh
-      - run:
-          command: |
-            sleep 120 && kubectl get all && sleep 120
-          name: Test green app in cluster
-  delete-cluster:
+          install-kubectl: true
+      - kubernetes/create-or-update-resource:
+          get-rollout-status: false
+          resource-file-path: deployments/nginx-deployment.yaml
+          resource-name: deployments/capstone-devpos-cluster
+
+  # Test the Cluster
+  test-cluster:
     executor: aws-eks/python3
     parameters:
       cluster-name:
         description: |
           Name of the EKS cluster
         type: string
-
     steps:
+      - kubernetes/install
+      - aws-eks/update-kubeconfig-with-authenticator:
+          cluster-name: << parameters.cluster-name >>
+          aws-region:  $AWS_REGION
       - run:
-          name: Install the eksctl tool
+          name: checking deployed kubernets clusters details.
           command: |
-            if which eksctl > /dev/null; then
-              echo "eksctl is already installed"
-              exit 0
-            fi
-            mkdir -p eksctl_download
-            curl --silent --location --retry 5 "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" \
-              | tar xz -C eksctl_download
-            chmod +x eksctl_download/eksctl
-            SUDO=""
-            if [ $(id -u) -ne 0 ] && which sudo > /dev/null ; then
-              SUDO="sudo"
-            fi
-            $SUDO mv eksctl_download/eksctl /usr/local/bin/
-            rmdir eksctl_download
-      - aws-eks/delete-cluster:
+            echo "Getting different cluster details"
+            kubectl get services
+            kubectl get pods
+            kubectl describe pods
+            kubectl get nodes
+            kubectl get deployment
+            kubectl get services -o wide
+  undeploy-application:
+    executor: aws-eks/python3
+    parameters:
+      cluster-name:
+        description: |
+          Name of the EKS cluster
+        type: string
+      aws-region:
+        description: |
+          AWS region
+        type: string
+        default: "us-east-1"
+    steps:
+      - aws-eks/update-kubeconfig-with-authenticator:
+          cluster-name: << parameters.cluster-name >>
+          install-kubectl: true
+          aws-region: << parameters.aws-region >>
+      - kubernetes/delete-resource:
+          resource-types: "deployment,service"
+          label-selector: "app=CAPSTONE"
+          wait: true
+      - run:
+          name: Check on pod status
+          command: |
+            kubectl get pods
+            kubectl get nodes
+      - destroy-cluster:
           cluster-name: << parameters.cluster-name >>
 
-orbs:
-  aws-eks: circleci/aws-eks@1.1.0
-  kubernetes: circleci/kubernetes@0.4.0
-version: 2.1
 workflows:
-  capstone-workflow:
+  deployment:
     jobs:
-      - lint-docker
-      - build-deploy-app:
+      - lintcheck
+      - build-and-push-image:
           requires:
-            - lint-docker
+            - lintcheck
       - create-cluster:
-          cluster-name: my-eks-demo
+          cluster-name: capstone-devpos-cluster
           requires:
-            - build-deploy-app
-      - test-cluster:
-          cluster-name: my-eks-demo
+            - build-and-push-image
+      - create-deployment:
+          cluster-name: capstone-devpos-cluster
           requires:
             - create-cluster
-      - delete-cluster:
-          cluster-name: my-eks-demo
+      - test-cluster:
+          cluster-name: capstone-devpos-cluster
+          requires:
+            - create-deployment
+      - undeploy-application:
+          cluster-name: capstone-devpos-cluster
+          aws-region: $AWS_DEFAULT_REGION
           requires:
             - test-cluster
